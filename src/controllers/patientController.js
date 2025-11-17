@@ -5,33 +5,80 @@ const Appointment = require('../models/Appointment');
 
 exports.completeProfile = async (req, res) => {
   try {
+    console.log(234);
+
     const {
-      username, firstName, lastName, profilePic, dateOfBirth,
-      gender, bloodGroup, address, emergencyContact,
-      medicalHistory, allergies, currentMedications
+      userName="",
+      age="",
+      gender="",
+      qualification="",
+      address="",
+      pincode="",
+      profileImage="",
+      certificates="",
+      userType="",
+      completedAt="",
+      reviewStatus=""
     } = req.body;
 
-    if (username) {
+    // Normalize and validate gender (frontend may send 'Male'/'Female')
+    const normalizedGender = gender ? String(gender).toLowerCase() : undefined;
+    const allowedGenders = ['male', 'female', 'other'];
+
+    if (!userName || !age || !normalizedGender || !address || !pincode) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide all required fields'
+      });
+    }
+
+    if (normalizedGender && !allowedGenders.includes(normalizedGender)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid gender value. Allowed: male, female, other'
+      });
+    }
+
+    console.log(2);
+    
+
+    if (userName) {
       const existingPatient = await Patient.findOne({ 
-        username, 
+        username: userName, 
         _id: { $ne: req.user._id } 
       });
       if (existingPatient) {
         return res.status(400).json({
           success: false,
-          message: 'Username already taken'
+          message: 'userName already taken'
         });
       }
     }
 
+    // Normalize incoming values and update patient profile
+    const normalizedAge = age ? parseInt(age, 10) : undefined;
+    const normalizedCertificates = Array.isArray(certificates)
+      ? certificates
+      : certificates ? [certificates] : [];
+    const normalizedCompletedAt = completedAt ? new Date(completedAt) : new Date();
+
     Object.assign(req.user, {
-      username, firstName, lastName, profilePic, dateOfBirth,
-      gender, bloodGroup, address, emergencyContact,
-      medicalHistory, allergies, currentMedications
+      username: userName && userName.trim(),
+      age: normalizedAge,
+      gender: normalizedGender,
+      qualification,
+      // map incoming address string to address.street to match schema
+      address: address ? { street: String(address).trim() } : req.user.address,
+      pincode: pincode ? String(pincode).trim() : req.user.pincode,
+      profilePic: profileImage || req.user.profilePic,
+      documents: normalizedCertificates.length ? normalizedCertificates : req.user.documents,
+      userType: userType || req.user.userType || 'patient',
+      completedAt: normalizedCompletedAt,
+      reviewStatus: reviewStatus || req.user.reviewStatus || (userType === 'doctor' ? 'pending' : 'approved')
     });
 
-    req.user.isProfileComplete = req.user.checkProfileComplete();
-    req.user.isNew = !req.user.isProfileComplete;
+    req.user.isProfileComplete = true;
+    req.user.isNew = false;
 
     await req.user.save();
 
@@ -124,6 +171,102 @@ exports.getPatientProfile = async (req, res) => {
       patient: req.user
     });
   } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const allowedFields = [
+      'username',
+      'firstName',
+      'lastName',
+      'profilePic',
+      'dateOfBirth',
+      'age',
+      'gender',
+      'bloodGroup',
+      'address',
+      'pincode',
+      'qualification',
+      'emergencyContact',
+      'medicalHistory',
+      'allergies',
+      'currentMedications'
+    ];
+
+    // Map aliases to actual field names
+    const fieldAliases = {
+      'userName': 'username',
+      'profileImage': 'profilePic'
+    };
+
+    // Filter req.body to only include allowed fields
+    const updateData = {};
+    Object.keys(req.body).forEach(key => {
+      // Check if key has an alias
+      const mappedKey = fieldAliases[key] || key;
+      
+      if (allowedFields.includes(mappedKey)) {
+        updateData[mappedKey] = req.body[key];
+      }
+    });
+
+    // Validate gender if provided
+    if (updateData.gender) {
+      const normalizedGender = String(updateData.gender).toLowerCase();
+      const allowedGenders = ['male', 'female', 'other'];
+      
+      if (!allowedGenders.includes(normalizedGender)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid gender value. Allowed: male, female, other'
+        });
+      }
+      updateData.gender = normalizedGender;
+    }
+
+    // Validate blood group if provided
+    if (updateData.bloodGroup) {
+      const allowedBloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+      if (!allowedBloodGroups.includes(updateData.bloodGroup)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid blood group value'
+        });
+      }
+    }
+
+    // Check if username is already taken (if updating username)
+    if (updateData.username) {
+      const existingPatient = await Patient.findOne({
+        username: updateData.username,
+        _id: { $ne: req.user._id }
+      });
+      if (existingPatient) {
+        return res.status(400).json({
+          success: false,
+          message: 'Username already taken'
+        });
+      }
+    }
+
+    // Update patient profile
+    Object.assign(req.user, updateData);
+    await req.user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      patient: req.user
+    });
+
+  } catch (error) {
+    console.error('Update profile error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',

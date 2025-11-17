@@ -20,7 +20,8 @@ const patientSchema = new mongoose.Schema({
   username: {
     type: String,
     unique: true,
-    sparse: true
+    sparse: true,
+    alias: 'userName'
   },
   firstName: {
     type: String,
@@ -32,6 +33,7 @@ const patientSchema = new mongoose.Schema({
   },
   profilePic: String,
   dateOfBirth: Date,
+  age: Number,
   gender: {
     type: String,
     enum: ['male', 'female', 'other']
@@ -46,6 +48,21 @@ const patientSchema = new mongoose.Schema({
     state: String,
     zipCode: String,
     country: String
+  },
+  pincode: String,
+  qualification: String,
+  // certificates / documents uploaded by user
+  documents: [String],
+  userType: {
+    type: String,
+    enum: ['patient', 'doctor'],
+    default: 'patient'
+  },
+  completedAt: Date,
+  reviewStatus: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'approved'
   },
   emergencyContact: {
     name: String,

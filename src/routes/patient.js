@@ -4,16 +4,18 @@ const {
   completeProfile,
   getDoctorsBySymptoms,
   getPatientAppointments,
-  getPatientProfile
+  getPatientProfile,
+  updateProfile
 } = require('../controllers/patientController');
 const { protect, authorize } = require('../middleware/auth');
 
 router.use(protect);
-router.use(authorize('patient'));
+// router.use(authorize('patient'));
 
-router.post('/profile/complete', completeProfile);
+router.post('/complete', completeProfile);
 router.post('/doctors/search', getDoctorsBySymptoms);
 router.get('/appointments', getPatientAppointments);
 router.get('/profile', getPatientProfile);
+router.put('/updateprofile', updateProfile);
 
 module.exports = router;

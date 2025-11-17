@@ -5,14 +5,40 @@ const Payment = require('../models/Payment');
 exports.completeProfile = async (req, res) => {
   try {
     const {
-      username, firstName, lastName, profilePic, dateOfBirth,
-      gender, specialization, qualification, experience,
-      registrationNumber, address, consultationFee, about, languages
+      userName = "",
+      age = "",
+      gender = "",
+      qualification = "",
+      address = "",
+      pincode = "",
+      profileImage = "",
+      certificates = "",
+      userType = "",
+      completedAt = "",
+      reviewStatus = ""
     } = req.body;
 
-    if (username) {
+    // Normalize and validate gender (frontend may send 'Male'/'Female')
+    const normalizedGender = gender ? String(gender).toLowerCase() : undefined;
+    const allowedGenders = ['male', 'female', 'other'];
+
+    if (!userName || !age || !normalizedGender || !address || !pincode) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide all required fields'
+      });
+    }
+
+    if (normalizedGender && !allowedGenders.includes(normalizedGender)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid gender value. Allowed: male, female, other'
+      });
+    }
+
+    if (userName) {
       const existingDoctor = await Doctor.findOne({ 
-        username, 
+        username: userName, 
         _id: { $ne: req.user._id } 
       });
       if (existingDoctor) {
@@ -23,14 +49,30 @@ exports.completeProfile = async (req, res) => {
       }
     }
 
+    // Normalize incoming values and update doctor profile
+    const normalizedAge = age ? parseInt(age, 10) : undefined;
+    const normalizedCertificates = Array.isArray(certificates)
+      ? certificates
+      : certificates ? [certificates] : [];
+    const normalizedCompletedAt = completedAt ? new Date(completedAt) : new Date();
+
     Object.assign(req.user, {
-      username, firstName, lastName, profilePic, dateOfBirth,
-      gender, specialization, qualification, experience,
-      registrationNumber, address, consultationFee, about, languages
+      username: userName && userName.trim(),
+      age: normalizedAge,
+      gender: normalizedGender,
+      qualification,
+      // map incoming address string to address.street to match schema
+      address: address ? { street: String(address).trim() } : req.user.address,
+      pincode: pincode ? String(pincode).trim() : req.user.pincode,
+      profilePic: profileImage || req.user.profilePic,
+      documents: normalizedCertificates.length ? normalizedCertificates : req.user.documents,
+      userType: userType || req.user.userType || 'doctor',
+      completedAt: normalizedCompletedAt,
+      reviewStatus: reviewStatus || req.user.reviewStatus || 'pending'
     });
 
-    req.user.isProfileComplete = req.user.checkProfileComplete();
-    req.user.isNew = !req.user.isProfileComplete;
+    req.user.isProfileComplete = true;
+    req.user.isNew = false;
     
     await req.user.save();
 

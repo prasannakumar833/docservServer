@@ -20,7 +20,8 @@ const doctorSchema = new mongoose.Schema({
   username: {
     type: String,
     unique: true,
-    sparse: true
+    sparse: true,
+    alias: 'userName'
   },
   firstName: {
     type: String,
@@ -32,16 +33,13 @@ const doctorSchema = new mongoose.Schema({
   },
   profilePic: String,
   dateOfBirth: Date,
+  age: Number,
   gender: {
     type: String,
     enum: ['male', 'female', 'other']
   },
   specialization: [String],
-  qualification: [{
-    degree: String,
-    institution: String,
-    year: Number
-  }],
+  qualification: String,
   experience: {
     type: Number,
     default: 0
@@ -58,6 +56,7 @@ const doctorSchema = new mongoose.Schema({
     zipCode: String,
     country: String
   },
+  pincode: String,
   consultationFee: {
     type: Number,
     default: 0
@@ -129,6 +128,17 @@ const doctorSchema = new mongoose.Schema({
   totalAppointments: {
     type: Number,
     default: 0
+  },
+  userType: {
+    type: String,
+    enum: ['patient', 'doctor'],
+    default: 'doctor'
+  },
+  completedAt: Date,
+  reviewStatus: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending'
   },
   availability: [{
     day: {

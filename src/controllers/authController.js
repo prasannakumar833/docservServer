@@ -1,3 +1,4 @@
+
 const Doctor = require('../models/Doctor');
 const Patient = require('../models/Patient');
 const Admin = require('../models/Admin');
@@ -7,8 +8,15 @@ const { sendOTPViaSMS } = require('../utils/smsService');
 const { sendOTPViaEmail } = require('../utils/emailService');
 
 const generateToken = (id, role) => {
-  return jwt.sign({ id, role }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE
+  const secret = process.env.JWT_SECRET;
+  console.log(secret);
+  
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is not set');
+  }
+  
+  return jwt.sign({ id, role }, secret, {
+    expiresIn: process.env.JWT_EXPIRE || '7d'
   });
 };
 
@@ -16,14 +24,15 @@ exports.loginOrRegister = async (req, res) => {
   try {
     
     const { identifier, role } = req.body;
-
+    console.log(req.body);
+    
     if (!identifier || !role) {
       return res.status(400).json({
         success: false,
         message: 'Please provide phone/email and role'
       });
     }
-
+    
     
 
     if (!['doctor', 'patient'].includes(role)) {
@@ -57,16 +66,17 @@ exports.loginOrRegister = async (req, res) => {
       await user.save();
     }
 
-    if (isEmail) {
-      await sendOTPViaEmail(identifier, otp);
-    } else {
-      await sendOTPViaSMS(identifier, otp);
-    }
+    // if (isEmail) {
+    //   await sendOTPViaEmail(identifier, otp);
+    // } else {
+    //   await sendOTPViaSMS(identifier, otp);
+    // }
 
     res.status(200).json({
       success: true,
       message: `OTP sent successfully to your ${isEmail ? 'email' : 'phone'}`,
       userId: user._id,
+      otp ,
       role
     });
 
@@ -123,7 +133,7 @@ exports.verifyOTP = async (req, res) => {
 
     const token = generateToken(user._id, role);
 
-    const isNew = user.isNew || !user.checkProfileComplete();
+    const isNew = (user.username && user?.gender && user?.age && user?.address ) ? false : true; 
     const verified = role === 'doctor' ? (user.verified && user.certificatesVerified) : true;
 
     res.status(200).json({
@@ -131,11 +141,7 @@ exports.verifyOTP = async (req, res) => {
       message: 'OTP verified successfully',
       token,
       user: {
-        id: user._id,
-        email: user.email,
-        phone: user.phone,
-        role,
-        isVerified: user.isVerified
+      ...user
       },
       isNew,
       verified
