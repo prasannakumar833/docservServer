@@ -274,3 +274,114 @@ exports.updateProfile = async (req, res) => {
     });
   }
 };
+
+// Get all patients with offset-based pagination
+exports.getAllPatientsPage = async (req, res) => {
+  try {
+    const { page = 1, count = 10 } = req.query;
+    
+    const pageNum = parseInt(page, 10) || 1;
+    const pageSize = parseInt(count, 10) || 10;
+    
+    if (pageNum < 1 || pageSize < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Page and count must be positive numbers'
+      });
+    }
+
+    const skip = (pageNum - 1) * pageSize;
+
+    const [patients, total] = await Promise.all([
+      Patient.find()
+        .select('-documents -password -otp -otpExpiry')
+        .sort({ _id: 1 })
+        .skip(skip)
+        .limit(pageSize),
+      Patient.countDocuments()
+    ]);
+
+    const totalPages = Math.ceil(total / pageSize);
+
+    res.status(200).json({
+      success: true,
+      pagination: {
+        currentPage: pageNum,
+        pageSize,
+        totalPatients: total,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1
+      },
+      count: patients.length,
+      patients
+    });
+
+  } catch (error) {
+    console.error('Get all patients error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// Get all patients with cursor-based pagination
+exports.getAllPatientsCursor = async (req, res) => {
+  try {
+    const { lastId = null, count = 10 } = req.query;
+    
+    const pageSize = parseInt(count, 10) || 10;
+
+    if (pageSize < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Count must be a positive number'
+      });
+    }
+
+    let query = {};
+
+    // If lastId is provided, get documents after that ID
+    if (lastId) {
+      try {
+        const ObjectId = require('mongoose').Types.ObjectId;
+        query._id = { $gt: new ObjectId(lastId) };
+      } catch (err) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid lastId format'
+        });
+      }
+    }
+
+    // Fetch one extra to check if there are more results
+    const patients = await Patient.find(query)
+      .select('-documents -password -otp -otpExpiry')
+      .sort({ _id: 1 })
+      .limit(pageSize + 1);
+
+    const hasMore = patients.length > pageSize;
+    const result = hasMore ? patients.slice(0, pageSize) : patients;
+    const nextCursor = result.length > 0 ? result[result.length - 1]._id : null;
+
+    res.status(200).json({
+      success: true,
+      cursor: {
+        nextId: hasMore ? nextCursor : null,
+        hasMore
+      },
+      count: result.length,
+      patients: result
+    });
+
+  } catch (error) {
+    console.error('Get all patients cursor error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};

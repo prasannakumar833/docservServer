@@ -12,6 +12,7 @@ const patientRoutes = require('./routes/patient');
 const appointmentRoutes = require('./routes/appointment');
 // const paymentRoutes = require('./routes/payment');
 const adminRoutes = require('./routes/admin');
+const { authorize } = require('./middleware/auth');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -31,7 +32,7 @@ app.use('/api', limiter);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
+// app.use(authorize) 
 app.use('/api/auth', authRoutes);
 app.use('/api/doctor', doctorRoutes);
 app.use('/api/patient', patientRoutes);

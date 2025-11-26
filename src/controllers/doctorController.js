@@ -38,10 +38,11 @@ exports.completeProfile = async (req, res) => {
 
     if (userName) {
       const existingDoctor = await Doctor.findOne({ 
-        username: userName, 
-        _id: { $ne: req.user._id } 
+        username: userName
       });
-      if (existingDoctor) {
+      
+
+      if (existingDoctor && existingDoctor._id.toString() !== req.user._id.toString()) {
         return res.status(400).json({
           success: false,
           message: 'Username already taken'
@@ -238,6 +239,261 @@ exports.getDoctorProfile = async (req, res) => {
       doctor: req.user
     });
   } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// Get all doctors with offset-based pagination
+exports.getAllDoctorsPage = async (req, res) => {
+  try {
+    const { page = 1, count = 10 } = req.query;
+    
+    const pageNum = parseInt(page, 10) || 1;
+    const pageSize = parseInt(count, 10) || 10;
+    
+    if (pageNum < 1 || pageSize < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Page and count must be positive numbers'
+      });
+    }
+
+    const skip = (pageNum - 1) * pageSize;
+
+    const [doctors, total] = await Promise.all([
+      Doctor.find()
+        .select('-documents -password')
+        .sort({ _id: 1 })
+        .skip(skip)
+        .limit(pageSize),
+      Doctor.countDocuments()
+    ]);
+
+    const totalPages = Math.ceil(total / pageSize);
+
+    res.status(200).json({
+      success: true,
+      pagination: {
+        currentPage: pageNum,
+        pageSize,
+        totalDoctors: total,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1
+      },
+      count: doctors.length,
+      doctors
+    });
+
+  } catch (error) {
+    console.error('Get all doctors error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// Get all doctors with cursor-based pagination
+exports.getAllDoctorsCursor = async (req, res) => {
+  try {
+    const { lastId = null, count = 20 } = req.query;
+    
+    const pageSize = parseInt(count, 20) || 20;
+
+    if (pageSize < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Count must be a positive number'
+      });
+    }
+
+    let query = {};
+
+    // If lastId is provided, get documents after that ID
+    if (lastId) {
+      try {
+        const ObjectId = require('mongoose').Types.ObjectId;
+        query._id = { $gt: new ObjectId(lastId) };
+      } catch (err) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid lastId format'
+        });
+      }
+    }
+
+    // Fetch one extra to check if there are more results
+    const doctors = await Doctor.find(query)
+      .select('-documents -password')
+      .sort({ _id: 1 })
+      .limit(pageSize + 1);
+
+    const hasMore = doctors.length > pageSize;
+    const result = hasMore ? doctors.slice(0, pageSize) : doctors;
+    const nextCursor = result.length > 0 ? result[result.length - 1]._id : null;
+
+    res.status(200).json({
+      success: true,
+      cursor: {
+        nextId: hasMore ? nextCursor : null,
+        hasMore
+      },
+      count: result.length,
+      doctors: result
+    });
+
+  } catch (error) {
+    console.error('Get all doctors cursor error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// Filter doctors based on multiple criteria
+exports.filterDoctors = async (req, res) => {
+  try {
+    const {
+      specialization = [],
+      minRating = 0,
+      maxRating = 5,
+      minExperience = 0,
+      maxExperience = 100,
+      minFee = 0,
+      maxFee = 100000,
+      qualification = [],
+      availability = false,
+      language = [],
+      verified = null,
+      page = 1,
+      count = 10,
+      sortBy = '_id',
+      sortOrder = 1
+    } = req.body;
+
+    const pageNum = parseInt(page, 10) || 1;
+    const pageSize = parseInt(count, 10) || 10;
+    const sortOrderNum = parseInt(sortOrder, 10) || 1;
+
+    if (pageNum < 1 || pageSize < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Page and count must be positive numbers'
+      });
+    }
+
+    // Build query object
+    let query = {
+      isBlocked: false // Don't show blocked doctors
+    };
+
+    // Filter by specialization (array)
+    if (Array.isArray(specialization) && specialization.length > 0) {
+      query.specialization = { $in: specialization };
+    }
+
+    // Filter by rating range
+    if (minRating !== undefined || maxRating !== undefined) {
+      query.rating = {};
+      if (minRating !== undefined) query.rating.$gte = minRating;
+      if (maxRating !== undefined) query.rating.$lte = maxRating;
+    }
+
+    // Filter by experience range
+    if (minExperience !== undefined || maxExperience !== undefined) {
+      query.experience = {};
+      if (minExperience !== undefined) query.experience.$gte = minExperience;
+      if (maxExperience !== undefined) query.experience.$lte = maxExperience;
+    }
+
+    // Filter by consultation fee range
+    if (minFee !== undefined || maxFee !== undefined) {
+      query.consultationFee = {};
+      if (minFee !== undefined) query.consultationFee.$gte = minFee;
+      if (maxFee !== undefined) query.consultationFee.$lte = maxFee;
+    }
+
+    // Filter by qualification (array)
+    if (Array.isArray(qualification) && qualification.length > 0) {
+      query.qualification = { $in: qualification };
+    }
+
+    // Filter by availability
+    if (availability === true) {
+      query.availability = { $exists: true, $not: { $size: 0 } };
+    }
+
+    // Filter by language (array)
+    if (Array.isArray(language) && language.length > 0) {
+      query.languages = { $in: language };
+    }
+
+    // Filter by verification status
+    if (verified !== null && verified !== undefined) {
+      query.verified = verified === true || verified === 'true';
+    }
+
+    // Calculate skip
+    const skip = (pageNum - 1) * pageSize;
+
+    // Determine sort field (validate to prevent injection)
+    const allowedSortFields = [
+      '_id',
+      'rating',
+      'experience',
+      'consultationFee',
+      'totalAppointments',
+      'createdAt',
+      'updatedAt'
+    ];
+    const finalSortField = allowedSortFields.includes(sortBy) ? sortBy : '_id';
+
+    // Execute query
+    const [doctors, total] = await Promise.all([
+      Doctor.find(query)
+        .select('-documents -password -otp -otpExpiry')
+        .sort({ [finalSortField]: sortOrderNum })
+        .skip(skip)
+        .limit(pageSize),
+      Doctor.countDocuments(query)
+    ]);
+
+    const totalPages = Math.ceil(total / pageSize);
+
+    res.status(200).json({
+      success: true,
+      pagination: {
+        currentPage: pageNum,
+        pageSize,
+        totalDoctors: total,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1
+      },
+      filters: {
+        specialization,
+        ratingRange: { min: minRating, max: maxRating },
+        experienceRange: { min: minExperience, max: maxExperience },
+        feeRange: { min: minFee, max: maxFee },
+        qualification,
+        availability,
+        language,
+        verified
+      },
+      count: doctors.length,
+      doctors
+    });
+
+  } catch (error) {
+    console.error('Filter doctors error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',

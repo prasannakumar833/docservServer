@@ -38,7 +38,7 @@ const doctorSchema = new mongoose.Schema({
     type: String,
     enum: ['male', 'female', 'other']
   },
-  specialization: [String],
+  specialization: [Object],
   qualification: String,
   experience: {
     type: Number,
@@ -64,7 +64,7 @@ const doctorSchema = new mongoose.Schema({
   documents: [{
     documentType: {
       type: String,
-      enum: ['certificate', 'degree', 'registration', 'identity', 'other']
+      enum: ['certificates', 'degree', 'registration', 'identity', 'other']
     },
     documentData: String,
     uploadedAt: {
